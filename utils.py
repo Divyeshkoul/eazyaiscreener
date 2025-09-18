@@ -1,10 +1,7 @@
 # Enhanced utils.py — Multi-format Resume Parsing (PDF, DOCX, DOC), Embeddings, Contact Extraction, Azure Uploads
+# Fixed for Streamlit Cloud compatibility
 
 import re
-import fitz  # PyMuPDF
-import docx
-import zipfile
-from docx import Document
 import numpy as np
 import tiktoken
 import functools
@@ -18,6 +15,22 @@ from constants import AZURE_CONFIG, MODEL_CONFIG, PERFORMANCE_CONFIG
 from openai import AzureOpenAI
 import pandas as pd
 import io
+import zipfile
+
+# Import with fallback handling for cloud deployment
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    logging.warning("PyMuPDF not available - PDF parsing will be limited")
+
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    logging.warning("python-docx not available - DOCX parsing will be limited")
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -32,12 +45,12 @@ client = AzureOpenAI(
 )
 
 # ==========================
-# 📄 Enhanced Multi-format Resume Text Extractor
+# 📄 Enhanced Multi-format Resume Text Extractor with Fallbacks
 # ==========================
 
 def parse_resume(file_bytes: bytes, filename: str = "resume", max_pages: int = 10) -> str:
     """
-    Enhanced resume parser supporting PDF, DOCX, and DOC formats
+    Enhanced resume parser supporting PDF, DOCX, and DOC formats with cloud deployment compatibility
     """
     try:
         start_time = time.time()
@@ -46,9 +59,9 @@ def parse_resume(file_bytes: bytes, filename: str = "resume", max_pages: int = 1
         file_extension = filename.lower().split('.')[-1] if '.' in filename else 'pdf'
         
         if file_extension == 'pdf':
-            text = parse_pdf(file_bytes, max_pages)
+            text = parse_pdf_with_fallback(file_bytes, max_pages)
         elif file_extension in ['docx', 'doc']:
-            text = parse_word_document(file_bytes, file_extension)
+            text = parse_word_document_with_fallback(file_bytes, file_extension)
         else:
             # Fallback: try to detect format by content
             text = parse_with_format_detection(file_bytes, max_pages)
@@ -65,8 +78,19 @@ def parse_resume(file_bytes: bytes, filename: str = "resume", max_pages: int = 1
         logger.error(f"Resume parsing failed for {filename}: {str(e)}")
         return f"Error reading resume: {str(e)}"
 
-def parse_pdf(file_bytes: bytes, max_pages: int = 10) -> str:
-    """Parse PDF files using PyMuPDF"""
+def parse_pdf_with_fallback(file_bytes: bytes, max_pages: int = 10) -> str:
+    """Parse PDF files with fallback for cloud deployment"""
+    if PYMUPDF_AVAILABLE:
+        try:
+            return parse_pdf_pymupdf(file_bytes, max_pages)
+        except Exception as e:
+            logger.warning(f"PyMuPDF parsing failed, trying fallback: {str(e)}")
+    
+    # Fallback method for PDF parsing
+    return parse_pdf_basic_fallback(file_bytes)
+
+def parse_pdf_pymupdf(file_bytes: bytes, max_pages: int = 10) -> str:
+    """Parse PDF files using PyMuPDF (when available)"""
     try:
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
             text_parts = []
@@ -87,24 +111,57 @@ def parse_pdf(file_bytes: bytes, max_pages: int = 10) -> str:
             
             return "\n\n".join(text_parts)
     except Exception as e:
-        logger.error(f"PDF parsing error: {str(e)}")
+        logger.error(f"PyMuPDF parsing error: {str(e)}")
         raise
 
-def parse_word_document(file_bytes: bytes, file_extension: str) -> str:
-    """Parse DOCX and DOC files"""
+def parse_pdf_basic_fallback(file_bytes: bytes) -> str:
+    """Basic PDF text extraction fallback"""
     try:
-        if file_extension == 'docx':
-            return parse_docx(file_bytes)
-        elif file_extension == 'doc':
-            return parse_doc_fallback(file_bytes)
+        # Very basic PDF text extraction attempt
+        text_content = file_bytes.decode('latin-1', errors='ignore')
+        
+        # Look for readable text patterns in PDF structure
+        text_matches = re.findall(r'\((.*?)\)', text_content)
+        readable_text = []
+        
+        for match in text_matches:
+            # Filter out binary data and keep readable text
+            if len(match) > 5 and re.search(r'[a-zA-Z\s]{5,}', match):
+                readable_text.append(match)
+        
+        if readable_text:
+            extracted = ' '.join(readable_text)
+            # Clean up common PDF artifacts
+            extracted = re.sub(r'\\[rn]', ' ', extracted)
+            extracted = re.sub(r'\\[a-z]+', ' ', extracted)
+            return extracted
         else:
-            raise ValueError(f"Unsupported Word format: {file_extension}")
+            return "PDF content could not be extracted. Please use DOCX format or ensure PDF is text-based."
+            
     except Exception as e:
-        logger.error(f"Word document parsing error: {str(e)}")
-        raise
+        logger.error(f"PDF fallback extraction failed: {str(e)}")
+        return "PDF parsing failed. Please convert to DOCX format for better results."
 
-def parse_docx(file_bytes: bytes) -> str:
-    """Parse DOCX files using python-docx"""
+def parse_word_document_with_fallback(file_bytes: bytes, file_extension: str) -> str:
+    """Parse DOCX and DOC files with fallback methods"""
+    if file_extension == 'docx':
+        if DOCX_AVAILABLE:
+            try:
+                return parse_docx_with_library(file_bytes)
+            except Exception as e:
+                logger.warning(f"python-docx parsing failed, trying fallback: {str(e)}")
+        
+        # Fallback to ZIP extraction
+        return parse_docx_as_zip_fallback(file_bytes)
+    
+    elif file_extension == 'doc':
+        return parse_doc_fallback(file_bytes)
+    
+    else:
+        raise ValueError(f"Unsupported Word format: {file_extension}")
+
+def parse_docx_with_library(file_bytes: bytes) -> str:
+    """Parse DOCX files using python-docx library (when available)"""
     try:
         # Create a BytesIO object from bytes
         doc_io = io.BytesIO(file_bytes)
@@ -131,12 +188,11 @@ def parse_docx(file_bytes: bytes) -> str:
         return "\n".join(text_parts)
         
     except Exception as e:
-        logger.error(f"DOCX parsing error: {str(e)}")
-        # Fallback: try to extract as ZIP
-        return extract_docx_as_zip(file_bytes)
+        logger.error(f"python-docx parsing error: {str(e)}")
+        raise
 
-def extract_docx_as_zip(file_bytes: bytes) -> str:
-    """Fallback method to extract DOCX content as ZIP"""
+def parse_docx_as_zip_fallback(file_bytes: bytes) -> str:
+    """Enhanced fallback method to extract DOCX content as ZIP"""
     try:
         doc_io = io.BytesIO(file_bytes)
         
@@ -144,67 +200,119 @@ def extract_docx_as_zip(file_bytes: bytes) -> str:
             # Try to read the main document content
             try:
                 content = zip_file.read('word/document.xml')
-                # Basic XML content extraction (remove tags)
-                text = re.sub(r'<[^>]+>', ' ', content.decode('utf-8', errors='ignore'))
-                text = re.sub(r'\s+', ' ', text).strip()
-                return text
+                # Enhanced XML content extraction
+                text = extract_text_from_xml(content.decode('utf-8', errors='ignore'))
+                if len(text.strip()) > 50:  # Ensure we got meaningful content
+                    return text
             except KeyError:
-                # If document.xml is not found, try other files
-                text_parts = []
-                for filename in zip_file.namelist():
-                    if filename.startswith('word/') and filename.endswith('.xml'):
-                        try:
-                            content = zip_file.read(filename)
-                            clean_text = re.sub(r'<[^>]+>', ' ', content.decode('utf-8', errors='ignore'))
-                            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-                            if clean_text:
-                                text_parts.append(clean_text)
-                        except Exception:
-                            continue
+                pass
+            
+            # If document.xml is not found or empty, try other files
+            text_parts = []
+            xml_files = [f for f in zip_file.namelist() if f.startswith('word/') and f.endswith('.xml')]
+            
+            for filename in xml_files:
+                try:
+                    content = zip_file.read(filename)
+                    clean_text = extract_text_from_xml(content.decode('utf-8', errors='ignore'))
+                    if clean_text and len(clean_text.strip()) > 20:
+                        text_parts.append(clean_text)
+                except Exception:
+                    continue
+            
+            if text_parts:
                 return "\n".join(text_parts)
+            else:
+                return "DOCX content extraction failed. Document may be empty or corrupted."
+                
     except Exception as e:
         logger.error(f"DOCX ZIP extraction failed: {str(e)}")
-        return "Error extracting DOCX content"
+        return f"DOCX parsing error: {str(e)}. Please try converting to PDF format."
+
+def extract_text_from_xml(xml_content: str) -> str:
+    """Extract readable text from XML content"""
+    try:
+        # Remove XML tags but preserve text content
+        # Handle common Word XML patterns
+        text = re.sub(r'<w:t[^>]*>(.*?)</w:t>', r'\1', xml_content)
+        text = re.sub(r'<w:p[^>]*>', '\n', text)  # Paragraphs become newlines
+        text = re.sub(r'<[^>]+>', ' ', text)  # Remove remaining tags
+        
+        # Clean up whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'\n\s*\n', '\n', text)
+        
+        return text.strip()
+    except Exception as e:
+        logger.warning(f"XML text extraction error: {str(e)}")
+        return ""
 
 def parse_doc_fallback(file_bytes: bytes) -> str:
     """
-    Fallback parser for DOC files (limited support)
-    Note: Full DOC parsing requires additional libraries like python-docx2txt or antiword
+    Enhanced fallback parser for DOC files with better error handling
     """
     try:
-        # Basic text extraction attempt
-        text = file_bytes.decode('utf-8', errors='ignore')
+        # Try to extract text using various methods
         
-        # Remove common binary artifacts
-        text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\xFF]', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
+        # Method 1: Look for readable text patterns
+        text_content = file_bytes.decode('latin-1', errors='ignore')
         
-        # If the text is mostly gibberish, return a message
-        readable_chars = len(re.findall(r'[a-zA-Z\s]', text))
-        if readable_chars < len(text) * 0.3:  # Less than 30% readable characters
-            return "DOC format detected but content extraction is limited. Please convert to DOCX or PDF for better parsing."
+        # Find text that looks like readable content
+        text_patterns = []
         
-        return text
+        # Look for sequences of readable characters
+        readable_sequences = re.findall(r'[a-zA-Z\s.,!?;:()-]{20,}', text_content)
+        for seq in readable_sequences:
+            # Filter out sequences that are mostly symbols or numbers
+            if re.search(r'[a-zA-Z]{10,}', seq):
+                text_patterns.append(seq)
+        
+        if text_patterns:
+            extracted_text = '\n'.join(text_patterns)
+            # Clean up the extracted text
+            extracted_text = re.sub(r'[^\w\s.,!?;:()-]', ' ', extracted_text)
+            extracted_text = re.sub(r'\s+', ' ', extracted_text)
+            
+            if len(extracted_text.strip()) > 100:
+                return extracted_text.strip()
+        
+        # Method 2: Try UTF-8 with errors ignored
+        try:
+            text_utf8 = file_bytes.decode('utf-8', errors='ignore')
+            readable_parts = re.findall(r'[a-zA-Z\s.,!?;:()-]{30,}', text_utf8)
+            if readable_parts and len(' '.join(readable_parts)) > 100:
+                return ' '.join(readable_parts)
+        except:
+            pass
+        
+        # If all methods fail, return informative message
+        return """DOC format detected but full content extraction is limited on this platform. 
+
+For best results, please:
+1. Convert your resume to PDF or DOCX format
+2. Or copy and paste the content into a new DOCX file
+
+The system can partially read this document but may miss some content."""
         
     except Exception as e:
         logger.error(f"DOC parsing error: {str(e)}")
-        return "Error parsing DOC file. Please convert to DOCX or PDF format."
+        return f"DOC file parsing failed: {str(e)}. Please convert to PDF or DOCX format."
 
 def parse_with_format_detection(file_bytes: bytes, max_pages: int = 10) -> str:
-    """Detect format and parse accordingly"""
+    """Detect format and parse accordingly with enhanced fallbacks"""
     try:
         # Check for PDF signature
         if file_bytes.startswith(b'%PDF'):
-            return parse_pdf(file_bytes, max_pages)
+            return parse_pdf_with_fallback(file_bytes, max_pages)
         
         # Check for DOCX signature (ZIP file with specific content)
         elif file_bytes.startswith(b'PK\x03\x04'):
             try:
                 # Try to parse as DOCX first
-                return parse_docx(file_bytes)
+                return parse_docx_as_zip_fallback(file_bytes)
             except:
                 # If DOCX parsing fails, might be another ZIP format
-                return "Unsupported ZIP-based document format"
+                return "ZIP-based document format detected but content extraction failed. Please use PDF format."
         
         # Check for DOC signature
         elif file_bytes.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'):
@@ -213,9 +321,13 @@ def parse_with_format_detection(file_bytes: bytes, max_pages: int = 10) -> str:
         else:
             # Try as text file
             try:
-                return file_bytes.decode('utf-8', errors='ignore')
+                text_content = file_bytes.decode('utf-8', errors='ignore')
+                if len(text_content.strip()) > 50:
+                    return text_content
+                else:
+                    return "Unknown file format - could not extract readable content"
             except:
-                return "Unknown file format - could not extract text"
+                return "Unknown file format - binary content detected"
                 
     except Exception as e:
         logger.error(f"Format detection failed: {str(e)}")
@@ -955,3 +1067,41 @@ def extract_top_skills_from_results(results: List[Dict[str, Any]]) -> List[Dict[
     # Sort by frequency and return top 10
     sorted_skills = sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)
     return [{"skill": skill, "count": count} for skill, count in sorted_skills[:10]]
+
+# ==========================
+# 🔄 Library Status Functions for Debugging
+# ==========================
+
+def get_library_status() -> Dict[str, bool]:
+    """Get status of optional libraries for debugging"""
+    return {
+        "pymupdf": PYMUPDF_AVAILABLE,
+        "python_docx": DOCX_AVAILABLE,
+    }
+
+def get_supported_formats() -> List[str]:
+    """Get list of fully supported formats based on available libraries"""
+    formats = []
+    
+    if PYMUPDF_AVAILABLE:
+        formats.append("pdf")
+    else:
+        formats.append("pdf (limited)")
+    
+    if DOCX_AVAILABLE:
+        formats.extend(["docx", "doc"])
+    else:
+        formats.extend(["docx (limited)", "doc (limited)"])
+    
+    return formats
+
+def log_parsing_capabilities():
+    """Log current parsing capabilities for debugging"""
+    logger.info(f"PDF parsing: {'Full (PyMuPDF)' if PYMUPDF_AVAILABLE else 'Limited (fallback)'}")
+    logger.info(f"DOCX parsing: {'Full (python-docx)' if DOCX_AVAILABLE else 'Limited (ZIP extraction)'}")
+    logger.info(f"DOC parsing: Limited (text extraction)")
+    
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF not available - PDF parsing will be limited")
+    if not DOCX_AVAILABLE:
+        logger.warning("python-docx not available - DOCX parsing will use fallback methods")
