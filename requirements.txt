@@ -1,0 +1,16 @@
+streamlit
+pandas
+openai
+azure-storage-blob
+tiktoken
+scikit-learn
+numpy
+PyMuPDF
+reportlab
+aiohttp
+requests
+python-dateutil
+python-dotenv
+google-auth
+google-auth-oauthlib
+google-api-python-client
