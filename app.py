@@ -490,7 +490,7 @@ if jd and analyze and not st.session_state["analysis_done"]:
         total = len(blob_files)
         if total == 0:
             st.error("❌ No resume files found in Azure Blob storage container.")
-            st.info("💡 **Tip:** Send resumes (PDF, DOCX, DOC) to **demoprojectid3@gmail.com** and they will be automatically uploaded!")
+            st.info("💡 **Tip:** Send resumes (PDF, DOCX, DOC) to **eazyai111@gmail.com** and they will be automatically uploaded!")
             st.stop()
         else:
             file_types = {}
@@ -1317,4 +1317,5 @@ elif not st.session_state["analysis_done"]:
     
     st.markdown("---")
     st.success("📧 **Gmail Integration**: Send resumes to **demoprojectid3@gmail.com** - they'll be automatically processed when you run analysis!")
+
     st.info("👈 **Get Started:** Fill in the job description and configuration options in the sidebar, then click 'Start Analysis' to begin!")
