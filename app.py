@@ -1246,7 +1246,7 @@ elif not st.session_state["analysis_done"]:
         </p>
         <div style="background: rgba(0, 212, 255, 0.1); padding: 1.5rem; border-radius: 12px; margin: 2rem 0; border: 1px solid rgba(0, 212, 255, 0.2);">
             <h3>📧 Email Integration Active</h3>
-            <p style="margin-bottom: 1rem;">Send resumes directly to: <strong>demoprojectid3@gmail.com</strong></p>
+            <p style="margin-bottom: 1rem;">Send resumes directly to: <strong>eazyai111@gmail.com</strong></p>
             <p style="color: #00d4ff; font-size: 0.9rem;">
                 Supported formats: PDF, DOCX, DOC • Auto-sync every time you open the app
             </p>
@@ -1316,6 +1316,7 @@ elif not st.session_state["analysis_done"]:
     """)
     
     st.markdown("---")
-    st.success("📧 **Gmail Integration**: Send resumes to **demoprojectid3@gmail.com** - they'll be automatically processed when you run analysis!")
+    st.success("📧 **Gmail Integration**: Send resumes to **eazyai111@gmail.com** - they'll be automatically processed when you run analysis!")
 
     st.info("👈 **Get Started:** Fill in the job description and configuration options in the sidebar, then click 'Start Analysis' to begin!")
+
