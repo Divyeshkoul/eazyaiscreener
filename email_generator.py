@@ -17,7 +17,7 @@ EMAIL_CONFIG = {
     "smtp_server": os.getenv("SMTP_SERVER", "smtp.gmail.com"),
     "smtp_port": int(os.getenv("SMTP_PORT", "587")),
     "smtp_user": os.getenv("SMTP_USER", "demoprojectid3@gmail.com"),
-    "smtp_pass": os.getenv("SMTP_PASS", "rpdsmhgbvppgldjx"),
+    "smtp_pass": os.getenv("SMTP_PASS", "hiikzyvfhopdumym"),
     "hr_email": os.getenv("HR_EMAIL", "demoprojectid3@gmail.com")
 }
 
@@ -604,3 +604,4 @@ def get_email_template_preview(template_type: str, sample_data: Dict[str, Any]) 
     except Exception as e:
         logger.error(f"Error generating email preview: {str(e)}")
         return {"error": str(e)}
+
