@@ -1,5 +1,5 @@
-# Enhanced utils.py — Multi-format Resume Parsing (PDF, DOCX, DOC), Embeddings, Contact Extraction, Azure Uploads
-# Fixed for Streamlit Cloud compatibility
+# Enhanced utils.py — Multi-format Resume Parsing (PDF, DOCX, DOC, EML)
+# Added .eml file support for extracting resumes from email files
 
 import re
 import numpy as np
@@ -16,6 +16,9 @@ from openai import AzureOpenAI
 import pandas as pd
 import io
 import zipfile
+import email
+from email import policy
+from email.parser import BytesParser
 
 # Import with fallback handling for cloud deployment
 try:
@@ -45,18 +48,136 @@ client = AzureOpenAI(
 )
 
 # ==========================
+# 📧 EML File Processing
+# ==========================
+
+def parse_eml_file(file_bytes: bytes) -> Dict[str, Any]:
+    """
+    Parse .eml file and extract resume attachments
+    Returns dict with email metadata and attachment info
+    """
+    try:
+        # Parse the email
+        msg = BytesParser(policy=policy.default).parsebytes(file_bytes)
+        
+        result = {
+            "subject": str(msg.get("Subject", "No Subject")),
+            "from": str(msg.get("From", "Unknown")),
+            "date": str(msg.get("Date", "Unknown")),
+            "attachments": [],
+            "resume_found": False,
+            "resume_data": None,
+            "resume_filename": None
+        }
+        
+        # Extract email body (might contain resume info)
+        body_text = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                if content_type == "text/plain":
+                    try:
+                        body_text += part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    except:
+                        pass
+        else:
+            try:
+                body_text = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+            except:
+                pass
+        
+        result["body"] = body_text
+        
+        # Process attachments
+        for part in msg.walk():
+            if part.get_content_maintype() == 'multipart':
+                continue
+            
+            filename = part.get_filename()
+            if filename:
+                # Decode filename
+                from email.header import decode_header
+                decoded = decode_header(filename)[0]
+                if isinstance(decoded[0], bytes):
+                    filename = decoded[0].decode(decoded[1] or 'utf-8', errors='ignore')
+                else:
+                    filename = decoded[0]
+                
+                # Check if it's a resume format
+                supported_extensions = ['.pdf', '.docx', '.doc']
+                is_resume = any(filename.lower().endswith(ext) for ext in supported_extensions)
+                
+                attachment_info = {
+                    "filename": filename,
+                    "content_type": part.get_content_type(),
+                    "size": len(part.get_payload(decode=True)) if part.get_payload(decode=True) else 0,
+                    "is_resume": is_resume
+                }
+                
+                result["attachments"].append(attachment_info)
+                
+                # If it's a resume, store it
+                if is_resume and not result["resume_found"]:
+                    result["resume_found"] = True
+                    result["resume_data"] = part.get_payload(decode=True)
+                    result["resume_filename"] = filename
+        
+        logger.info(f"Parsed .eml file - Found {len(result['attachments'])} attachments, Resume: {result['resume_found']}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to parse .eml file: {str(e)}")
+        return {
+            "error": str(e),
+            "attachments": [],
+            "resume_found": False
+        }
+
+def extract_resume_from_eml(file_bytes: bytes) -> Tuple[Optional[bytes], Optional[str]]:
+    """
+    Extract the first resume attachment from an .eml file
+    Returns (resume_bytes, filename) or (None, None)
+    """
+    eml_data = parse_eml_file(file_bytes)
+    
+    if eml_data.get("resume_found"):
+        return eml_data["resume_data"], eml_data["resume_filename"]
+    
+    return None, None
+
+# ==========================
 # 📄 Enhanced Multi-format Resume Text Extractor with Fallbacks
 # ==========================
 
 def parse_resume(file_bytes: bytes, filename: str = "resume", max_pages: int = 10) -> str:
     """
-    Enhanced resume parser supporting PDF, DOCX, and DOC formats with cloud deployment compatibility
+    Enhanced resume parser supporting PDF, DOCX, DOC, and EML formats
     """
     try:
         start_time = time.time()
         
         # Determine file type from filename or content
         file_extension = filename.lower().split('.')[-1] if '.' in filename else 'pdf'
+        
+        # Handle .eml files specially
+        if file_extension == 'eml':
+            logger.info(f"Processing .eml file: {filename}")
+            resume_bytes, resume_filename = extract_resume_from_eml(file_bytes)
+            
+            if resume_bytes and resume_filename:
+                logger.info(f"Extracted resume '{resume_filename}' from .eml file")
+                # Recursively parse the extracted resume
+                return parse_resume(resume_bytes, resume_filename, max_pages)
+            else:
+                # Try to extract text from email body
+                eml_data = parse_eml_file(file_bytes)
+                body_text = eml_data.get("body", "")
+                
+                if len(body_text) > 200:  # Might be inline resume
+                    logger.info("No resume attachment found, using email body text")
+                    return clean_resume_text(body_text)
+                else:
+                    return "No resume found in .eml file. Please attach resume as PDF, DOCX, or DOC."
         
         if file_extension == 'pdf':
             text = parse_pdf_with_fallback(file_bytes, max_pages)
@@ -301,6 +422,11 @@ The system can partially read this document but may miss some content."""
 def parse_with_format_detection(file_bytes: bytes, max_pages: int = 10) -> str:
     """Detect format and parse accordingly with enhanced fallbacks"""
     try:
+        # Check for EML signature (starts with email headers)
+        if b'From:' in file_bytes[:500] or b'Subject:' in file_bytes[:500]:
+            logger.info("Detected .eml format by content")
+            return parse_resume(file_bytes, "detected.eml", max_pages)
+        
         # Check for PDF signature
         if file_bytes.startswith(b'%PDF'):
             return parse_pdf_with_fallback(file_bytes, max_pages)
@@ -696,7 +822,7 @@ def get_file_format_from_name(filename: str) -> str:
 
 def is_supported_resume_format(filename: str) -> bool:
     """Check if file format is supported for resume parsing"""
-    supported_formats = ['pdf', 'docx', 'doc']
+    supported_formats = ['pdf', 'docx', 'doc', 'eml']
     file_format = get_file_format_from_name(filename)
     return file_format in supported_formats
 
@@ -751,8 +877,8 @@ def analyze_file_formats(file_list: List[Tuple[str, bytes]]) -> Dict[str, Any]:
         'total_files': len(file_list),
         'total_size_bytes': total_size,
         'total_size_mb': total_size / (1024 * 1024),
-        'supported_formats': [fmt for fmt in format_stats.keys() if fmt in ['pdf', 'docx', 'doc']],
-        'unsupported_formats': [fmt for fmt in format_stats.keys() if fmt not in ['pdf', 'docx', 'doc']]
+        'supported_formats': [fmt for fmt in format_stats.keys() if fmt in ['pdf', 'docx', 'doc', 'eml']],
+        'unsupported_formats': [fmt for fmt in format_stats.keys() if fmt not in ['pdf', 'docx', 'doc', 'eml']]
     }
 
 # ==========================
@@ -828,7 +954,8 @@ def calculate_resume_quality_score(text: str, contact: Dict[str, str], file_form
     format_bonus = {
         'pdf': 0,    # Standard format
         'docx': 0,   # Standard format  
-        'doc': -5    # Older format, slight penalty
+        'doc': -5,   # Older format, slight penalty
+        'eml': -3    # Email format, slight penalty
     }
     
     score += format_bonus.get(file_format, -10)  # Unknown formats get penalty
@@ -904,7 +1031,7 @@ def calculate_resume_quality_score(text: str, contact: Dict[str, str], file_form
         "factors": factors,
         "contact_completeness": contact_score / 20 * 100,
         "file_format": file_format,
-        "format_quality": "Good" if file_format in ['pdf', 'docx'] else "Acceptable" if file_format == 'doc' else "Poor"
+        "format_quality": "Good" if file_format in ['pdf', 'docx'] else "Acceptable" if file_format in ['doc', 'eml'] else "Poor"
     }
 
 # ==========================
@@ -921,10 +1048,12 @@ def detect_resume_anomalies(text: str, contact: Dict[str, str], file_format: str
     
     # Format-specific risk assessment
     if file_format == 'doc':
-        # DOC files have limited parsing, higher risk of incomplete analysis
         risk_score += 5
         anomalies.append("DOC format may have incomplete text extraction")
-    elif file_format not in ['pdf', 'docx', 'doc']:
+    elif file_format == 'eml':
+        risk_score += 3
+        anomalies.append("EML format - verify resume attachment was properly extracted")
+    elif file_format not in ['pdf', 'docx', 'doc', 'eml']:
         risk_score += 15
         anomalies.append("Unusual file format for resumes")
     
@@ -981,13 +1110,16 @@ def detect_resume_anomalies(text: str, contact: Dict[str, str], file_format: str
     elif file_format in ['docx', 'doc'] and len(text) < 100:
         anomalies.append("Word document appears to have minimal content")
         risk_score += 10
+    elif file_format == 'eml' and 'No resume found' in text:
+        anomalies.append("EML file did not contain a resume attachment")
+        risk_score += 20
     
     return {
         "anomalies": anomalies,
         "risk_score": min(risk_score, 100),
         "requires_manual_review": risk_score > 30,
         "file_format": file_format,
-        "format_specific_issues": [a for a in anomalies if 'format' in a.lower() or 'parsing' in a.lower()]
+        "format_specific_issues": [a for a in anomalies if 'format' in a.lower() or 'parsing' in a.lower() or 'eml' in a.lower()]
     }
 
 # ==========================
@@ -1081,7 +1213,7 @@ def get_library_status() -> Dict[str, bool]:
 
 def get_supported_formats() -> List[str]:
     """Get list of fully supported formats based on available libraries"""
-    formats = []
+    formats = ['eml']  # EML always supported via email library
     
     if PYMUPDF_AVAILABLE:
         formats.append("pdf")
@@ -1100,6 +1232,7 @@ def log_parsing_capabilities():
     logger.info(f"PDF parsing: {'Full (PyMuPDF)' if PYMUPDF_AVAILABLE else 'Limited (fallback)'}")
     logger.info(f"DOCX parsing: {'Full (python-docx)' if DOCX_AVAILABLE else 'Limited (ZIP extraction)'}")
     logger.info(f"DOC parsing: Limited (text extraction)")
+    logger.info(f"EML parsing: Full (email library)")
     
     if not PYMUPDF_AVAILABLE:
         logger.warning("PyMuPDF not available - PDF parsing will be limited")
