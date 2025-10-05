@@ -297,11 +297,11 @@ if gmail_service and not st.session_state["gmail_service_initialized"]:
     st.session_state["gmail_service_initialized"] = True
 
 def download_all_supported_resume_blobs():
-    """Download all supported resume files (PDF, DOCX, DOC) from Azure Blob Storage"""
+    """Download all supported resume files (PDF, DOCX, DOC, EML) from Azure Blob Storage"""
     try:
         blobs = resumes_container_client.list_blobs()
         resume_files = []
-        supported_extensions = ['.pdf', '.docx', '.doc']
+        supported_extensions = ['.pdf', '.docx', '.doc', '.eml']
         
         for blob in blobs:
             if any(blob.name.lower().endswith(ext) for ext in supported_extensions):
@@ -320,7 +320,7 @@ def download_all_supported_resume_blobs():
         return []
 
 def render_gmail_sync_status():
-    """Render Gmail sync status in the main area"""
+    """Render Gmail sync status in the main area with EML support"""
     if gmail_service:
         status = gmail_service.get_status()
         st.session_state["gmail_sync_status"] = status
@@ -336,6 +336,10 @@ def render_gmail_sync_status():
         status_icon = "🔄" if status.get("is_active") else "✅" if status.get("last_sync") else "⏳"
         active_text = " (Active)" if status.get("is_active") else ""
         
+        # Include EML files processed count
+        eml_count = status.get('eml_files_processed', 0)
+        eml_info = f" ({eml_count} from .eml)" if eml_count > 0 else ""
+        
         st.markdown(f"""
         <div class="{status_class}">
             <h4>{status_icon} Gmail Auto-Sync Status{active_text}</h4>
@@ -350,7 +354,7 @@ def render_gmail_sync_status():
                 </div>
                 <div>
                     <strong>Resumes Uploaded:</strong><br>
-                    {status.get('files_uploaded', 0)}
+                    {status.get('files_uploaded', 0)}{eml_info}
                 </div>
                 <div>
                     <strong>Status:</strong><br>
@@ -444,9 +448,9 @@ with st.sidebar:
     if not load_from_blob:
         uploaded_files = st.file_uploader(
             "📤 Upload Resume Files", 
-            type=["pdf", "docx", "doc"], 
+            type=["pdf", "docx", "doc", "eml"], 
             accept_multiple_files=True,
-            help="Select multiple resume files (PDF, DOCX, DOC formats supported)"
+            help="Select multiple resume files (PDF, DOCX, DOC, EML formats supported)"
         )
     else:
         uploaded_files = None
@@ -458,10 +462,13 @@ with st.sidebar:
     if gmail_service:
         sync_status = gmail_service.get_status()
         
+        eml_count = sync_status.get('eml_files_processed', 0)
+        eml_text = f" ({eml_count} .eml)" if eml_count > 0 else ""
+        
         st.markdown(f"""
         **Status:** {'🔄 Active' if sync_status.get('is_active') else '✅ Ready'}  
         **Last Sync:** {sync_status.get('last_sync', 'Never')}  
-        **Files Uploaded:** {sync_status.get('files_uploaded', 0)}
+        **Files Uploaded:** {sync_status.get('files_uploaded', 0)}{eml_text}
         """)
         
         if sync_status.get("errors"):
@@ -486,11 +493,11 @@ if jd and analyze and not st.session_state["analysis_done"]:
     # Load resumes
     if load_from_blob:
         status_text.info("📥 Loading resumes from Azure Blob Storage...")
-        blob_files = download_all_supported_resume_blobs()  # Now supports PDF, DOCX, DOC
+        blob_files = download_all_supported_resume_blobs()  # Now supports PDF, DOCX, DOC, EML
         total = len(blob_files)
         if total == 0:
             st.error("❌ No resume files found in Azure Blob storage container.")
-            st.info("💡 **Tip:** Send resumes (PDF, DOCX, DOC) to **eazyai111@gmail.com** and they will be automatically uploaded!")
+            st.info("💡 **Tip:** Send resumes (PDF, DOCX, DOC) or .eml files to **eazyhire111@gmail.com** and they will be automatically uploaded!")
             st.stop()
         else:
             file_types = {}
@@ -500,6 +507,10 @@ if jd and analyze and not st.session_state["analysis_done"]:
             
             types_text = ", ".join([f"{count} {ext.upper()}" for ext, count in file_types.items()])
             st.info(f"📊 Found {total} resumes in blob storage ({types_text})")
+            
+            # Show EML file notice if any
+            if file_types.get('eml', 0) > 0:
+                st.info(f"📧 Found {file_types['eml']} .eml file(s) - resumes will be extracted from email attachments")
     else:
         blob_files = None
         total = len(uploaded_files) if uploaded_files else 0
@@ -531,8 +542,8 @@ if jd and analyze and not st.session_state["analysis_done"]:
                     # Upload to blob (if not already there)
                     upload_to_blob(file_bytes, file_name, AZURE_CONFIG["resumes_container"])
                     
-                    # Parse resume
-                    resume_text = parse_resume(file_bytes)
+                    # Parse resume (now handles EML files automatically)
+                    resume_text = parse_resume(file_bytes, file_name)
                     contact = extract_contact_info(resume_text)
 
                     # Compute similarity
@@ -558,13 +569,13 @@ if jd and analyze and not st.session_state["analysis_done"]:
                 
                 try:
                     file_bytes = file.read()
-                    file_name = file.name.replace(".pdf", "")
+                    file_name = file.name
                     
                     # Upload to blob
-                    upload_to_blob(file_bytes, file_name + ".pdf", AZURE_CONFIG["resumes_container"])
+                    upload_to_blob(file_bytes, file_name, AZURE_CONFIG["resumes_container"])
 
-                    # Parse resume
-                    resume_text = parse_resume(file_bytes)
+                    # Parse resume (now handles EML files automatically)
+                    resume_text = parse_resume(file_bytes, file_name)
                     contact = extract_contact_info(resume_text)
 
                     # Compute similarity
@@ -1074,10 +1085,10 @@ EazyAI Recruitment Team"""
             with col2:
                 st.metric("📄 Files Uploaded", sync_status.get('files_uploaded', 0))
             with col3:
-                st.metric("❌ Sync Errors", len(sync_status.get('errors', [])))
+                eml_processed = sync_status.get('eml_files_processed', 0)
+                st.metric("📨 EML Files", eml_processed)
             with col4:
-                last_sync = sync_status.get('last_sync', 'Never')
-                st.metric("🕐 Last Sync", last_sync.split()[1] if last_sync != 'Never' and len(last_sync.split()) > 1 else last_sync)
+                st.metric("❌ Sync Errors", len(sync_status.get('errors', [])))
             
             st.markdown("---")
         
@@ -1246,9 +1257,9 @@ elif not st.session_state["analysis_done"]:
         </p>
         <div style="background: rgba(0, 212, 255, 0.1); padding: 1.5rem; border-radius: 12px; margin: 2rem 0; border: 1px solid rgba(0, 212, 255, 0.2);">
             <h3>📧 Email Integration Active</h3>
-            <p style="margin-bottom: 1rem;">Send resumes directly to: <strong>eazyai111@gmail.com</strong></p>
+            <p style="margin-bottom: 1rem;">Send resumes directly to: <strong>eazyhire111@gmail.com</strong></p>
             <p style="color: #00d4ff; font-size: 0.9rem;">
-                Supported formats: PDF, DOCX, DOC • Auto-sync every time you open the app
+                Supported formats: PDF, DOCX, DOC, EML • Auto-sync every time you open the app
             </p>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-top: 2rem;">
@@ -1289,7 +1300,7 @@ elif not st.session_state["analysis_done"]:
         st.markdown("""
         ### ⚡ Advanced Features  
         - **Gmail auto-sync** for resume collection
-        - **Multi-format support** (PDF, DOCX, DOC)
+        - **Multi-format support** (PDF, DOCX, DOC, EML)
         - **Bulk email automation** with custom templates
         - **PDF summary generation** for candidates
         - **Real-time progress tracking** and performance metrics
@@ -1311,12 +1322,12 @@ elif not st.session_state["analysis_done"]:
     🚀 **Performance Expectations:**
     - **Gmail Auto-Sync**: Automatically processes new resumes when app starts
     - **~17 resumes**: Processed in 45-90 seconds (avg 3-5 seconds per resume)
-    - **Multi-format support**: PDF, DOCX, and DOC files supported
+    - **Multi-format support**: PDF, DOCX, DOC, and EML files supported
+    - **EML Processing**: Automatically extracts resumes from email attachments
     - **Real-time progress**: Live updates during analysis and sync
     """)
     
     st.markdown("---")
-    st.success("📧 **Gmail Integration**: Send resumes to **eazyai111@gmail.com** - they'll be automatically processed when you run analysis!")
+    st.success("📧 **Gmail Integration**: Send resumes (or .eml files with resumes) to **eazyhire111@gmail.com** - they'll be automatically processed when you run analysis!")
 
     st.info("👈 **Get Started:** Fill in the job description and configuration options in the sidebar, then click 'Start Analysis' to begin!")
-
