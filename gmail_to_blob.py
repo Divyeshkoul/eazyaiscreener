@@ -21,7 +21,7 @@ IMAP_SERVER = "imap.gmail.com"
 IMAP_PORT = 993
 
 class GmailToAzureService:
-    def __init__(self, azure_connection_string: str, container_name: str = "lawfirmresumes"):
+    def __init__(self, azure_connection_string: str, container_name: str = "resumes"):
         self.azure_connection_string = azure_connection_string
         self.container_name = container_name
         self.is_running = False
@@ -320,4 +320,5 @@ def auto_sync_gmail_on_startup(azure_connection_string: str) -> GmailToAzureServ
     service = initialize_gmail_service(azure_connection_string)
     service.start_background_sync()
     return service
+
 
