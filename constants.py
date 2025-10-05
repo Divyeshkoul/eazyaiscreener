@@ -8,7 +8,7 @@ AZURE_CONFIG = {
     "api_version": "2024-04-01-preview",
     "connection_string": os.getenv("AZURE_STORAGE_CONNECTION_STRING", 
                                  "DefaultEndpointsProtocol=https;AccountName=resumescreenerst;AccountKey=H8sGhn9NpR5qoDrTJpdXZxGpBM3h67hChtd4B4v7vIy8QG3lv8cNIdUvnBoTDwyvN3YhtQH56Hbr+AStrMNVbA==;EndpointSuffix=core.windows.net"),
-    "resumes_container": "lawfirmresumes",
+    "resumes_container": "resumes",
     "summaries_container": "summaries", 
     "csv_container": "csvdata"
 }
@@ -236,3 +236,4 @@ DEBUG_CONFIG = {
     "mock_gpt_responses": False     # Use mock responses for testing
 
 }
+
