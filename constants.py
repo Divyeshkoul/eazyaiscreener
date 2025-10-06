@@ -40,20 +40,26 @@ DEFAULT_THRESHOLDS = {
 
 # Performance Configuration
 PERFORMANCE_CONFIG = {
-    "max_resume_chunks": 2,      # Reduced for faster processing
-    "chunk_size": 1500,          # Optimal chunk size for GPT
-    "chunk_overlap": 150,        # Overlap between chunks
-    "batch_size": 5,             # Process 5 resumes concurrently
-    "request_timeout": 30.0,     # Timeout for GPT requests
-    "max_retries": 3,            # Retry failed requests
-    "rate_limit_delay": 0.5      # Delay between batches (seconds)
+    "max_resume_chunks": 2,      # Keep at 2 (good balance)
+    "chunk_size": 1500,          # Keep at 1500 (optimal for GPT-4)
+    "chunk_overlap": 150,        # Keep at 150
+    "batch_size": 10,            # INCREASE from 5 to 10
+    "request_timeout": 30.0,     # Keep at 30
+    "max_retries": 2,            # REDUCE from 3 to 2 (faster failure)
+    "rate_limit_delay": 0.2      # REDUCE from 0.5 to 0.2
 }
-
 # Enhanced GPT Prompt - Optimized for consistency and speed
 STRICT_GPT_PROMPT = """
 You are AIRecruiter — an intelligent, unbiased, and professional virtual recruiter assistant.
 
 Your job is to analyze resumes fairly against a job description, detect exaggerations or inconsistencies, and generate structured, clear insights for the recruiter.
+CRITICAL EXPERIENCE MATCHING RULES:
+1. If JD says "Intern" or "0-1 years" → Candidates with 3+ years should score LOW on experience_match (20-40)
+2. If JD says "1-3 years" → Candidates with 5+ years should score LOW on experience_match (30-50)
+3. If JD says "Senior" or "5+ years" → Candidates with 1-2 years should score LOW on experience_match (20-40)
+4. Overqualification is a RED FLAG - include in red_flags array
+5. Underqualification is a RED FLAG - include in red_flags array
+
 
 Responsibilities:
 1. Parse resume content into structured fields.
@@ -236,4 +242,5 @@ DEBUG_CONFIG = {
     "mock_gpt_responses": False     # Use mock responses for testing
 
 }
+
 
