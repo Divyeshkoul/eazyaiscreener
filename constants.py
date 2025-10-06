@@ -60,6 +60,20 @@ CRITICAL EXPERIENCE MATCHING RULES:
 4. Overqualification is a RED FLAG - include in red_flags array
 5. Underqualification is a RED FLAG - include in red_flags array
 
+CRITICAL EXPERIENCE RULES (MUST FOLLOW):
+1. Intern/Entry-level (0-1 yrs) JDs:
+   - Candidates with 3+ years → experience_match: 20-40, verdict: "reject", red_flag: "Overqualified"
+   
+2. Mid-level (2-4 yrs) JDs:
+   - Candidates with 7+ years → experience_match: 30-50, red_flag: "Overqualified"
+   - Candidates with <1 year → experience_match: 30-50, red_flag: "Underqualified"
+   
+3. Senior (5+ yrs) JDs:
+   - Candidates with <3 years → experience_match: 20-40, verdict: "reject", red_flag: "Underqualified"
+
+DO NOT shortlist overqualified candidates for entry-level roles even if skills are perfect.
+"""
+
 
 Responsibilities:
 1. Parse resume content into structured fields.
@@ -242,5 +256,6 @@ DEBUG_CONFIG = {
     "mock_gpt_responses": False     # Use mock responses for testing
 
 }
+
 
 
