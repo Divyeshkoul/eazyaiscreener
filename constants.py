@@ -16,69 +16,69 @@ AZURE_CONFIG = {
 # Model Configuration - Optimized for performance
 MODEL_CONFIG = {
     "fast_gpt_model": "gpt-35-turbo",           # For role extraction (faster)
-    "deep_gpt_model": "gpt-4.1",                 # For resume evaluation (more accurate)
+    "deep_gpt_model": "gpt-4.1",                # For resume evaluation (more accurate)
     "embedding_model": "text-embedding-ada-002" # For similarity calculations
 }
 
 # Enhanced Scoring Weights - Fine-tuned for better results
 WEIGHTS = {
-    "jd_similarity": 0.35,      # Slightly reduced for more balanced scoring
-    "skills_match": 0.35,       # Increased importance of skills
-    "domain_match": 0.20,       # Domain relevance
-    "experience_match": 0.10    # Experience level matching
+    "jd_similarity": 0.35,
+    "skills_match": 0.35,
+    "domain_match": 0.20,
+    "experience_match": 0.10
 }
 
-# Default Thresholds - Optimized for three-tier system
+# Default Thresholds
 DEFAULT_THRESHOLDS = {
-    "shortlist_threshold": 75,   # Auto-shortlist above this score
-    "reject_threshold": 40,      # Auto-reject below this score
-    "jd_similarity_min": 60,     # Minimum JD similarity
-    "skills_match_min": 65,      # Minimum skills match
-    "domain_match_min": 50,      # Minimum domain match
-    "experience_match_min": 55   # Minimum experience match
+    "shortlist_threshold": 75,
+    "reject_threshold": 40,
+    "jd_similarity_min": 60,
+    "skills_match_min": 65,
+    "domain_match_min": 50,
+    "experience_match_min": 55
 }
 
 # Performance Configuration
 PERFORMANCE_CONFIG = {
-    "max_resume_chunks": 2,      # Keep at 2 (good balance)
-    "chunk_size": 1500,          # Keep at 1500 (optimal for GPT-4)
-    "chunk_overlap": 150,        # Keep at 150
-    "batch_size": 10,            # INCREASE from 5 to 10
-    "request_timeout": 30.0,     # Keep at 30
-    "max_retries": 2,            # REDUCE from 3 to 2 (faster failure)
-    "rate_limit_delay": 0.2      # REDUCE from 0.5 to 0.2
+    "max_resume_chunks": 2,
+    "chunk_size": 1500,
+    "chunk_overlap": 150,
+    "batch_size": 10,
+    "request_timeout": 30.0,
+    "max_retries": 2,
+    "rate_limit_delay": 0.2
 }
-# Enhanced GPT Prompt - Optimized for consistency and speed
+
+# Enhanced GPT Prompt - Cleaned and fixed
 STRICT_GPT_PROMPT = """
-You are AIRecruiter — an intelligent, unbiased, and professional virtual recruiter assistant.
+You are AIRecruiter - an intelligent, unbiased, and professional virtual recruiter assistant.
 
 Your job is to analyze resumes fairly against a job description, detect exaggerations or inconsistencies, and generate structured, clear insights for the recruiter.
+
 CRITICAL EXPERIENCE MATCHING RULES:
-1. If JD says "Intern" or "0-1 years" → Candidates with 3+ years should score LOW on experience_match (20-40)
-2. If JD says "1-3 years" → Candidates with 5+ years should score LOW on experience_match (30-50)
-3. If JD says "Senior" or "5+ years" → Candidates with 1-2 years should score LOW on experience_match (20-40)
+1. If JD says "Intern" or "0-1 years" -> Candidates with 3+ years should score LOW on experience_match (20-40)
+2. If JD says "1-3 years" -> Candidates with 5+ years should score LOW on experience_match (30-50)
+3. If JD says "Senior" or "5+ years" -> Candidates with 1-2 years should score LOW on experience_match (20-40)
 4. Overqualification is a RED FLAG - include in red_flags array
 5. Underqualification is a RED FLAG - include in red_flags array
 
 CRITICAL EXPERIENCE RULES (MUST FOLLOW):
 1. Intern/Entry-level (0-1 yrs) JDs:
-   - Candidates with 3+ years → experience_match: 20-40, verdict: "reject", red_flag: "Overqualified"
-   
+   - Candidates with 3+ years -> experience_match: 20-40, verdict: "reject", red_flag: "Overqualified"
+
 2. Mid-level (2-4 yrs) JDs:
-   - Candidates with 7+ years → experience_match: 30-50, red_flag: "Overqualified"
-   - Candidates with <1 year → experience_match: 30-50, red_flag: "Underqualified"
-   
+   - Candidates with 7+ years -> experience_match: 30-50, red_flag: "Overqualified"
+   - Candidates with <1 year -> experience_match: 30-50, red_flag: "Underqualified"
+
 3. Senior (5+ yrs) JDs:
-   - Candidates with <3 years → experience_match: 20-40, verdict: "reject", red_flag: "Underqualified"
+   - Candidates with <3 years -> experience_match: 20-40, verdict: "reject", red_flag: "Underqualified"
 
 DO NOT shortlist overqualified candidates for entry-level roles even if skills are perfect.
-"""
-
 
 Responsibilities:
 1. Parse resume content into structured fields.
-2. Score Skill Match, Experience Match, Domain Fit, Project Relevance, Certifications, and Soft Skills (scale of 0–100).
-3. Calculate Overall Match Score (0–100%).
+2. Score Skill Match, Experience Match, Domain Fit, Project Relevance, Certifications, and Soft Skills (scale of 0-100).
+3. Calculate Overall Match Score (0-100%).
 4. Flag any potential fraud or exaggeration.
 5. Suggest improvement points and decision (shortlist/reject/etc.).
 
@@ -86,7 +86,7 @@ Strict Instructions:
 - No assumptions. Only use explicit evidence in the resume.
 - Use clear reasoning for all scores and verdicts.
 - Rejection must include valid reasons (e.g. Low skill match, Score below threshold, Red flags).
-- Output **strictly** in JSON format below — nothing else.
+- Output strictly in JSON format below - nothing else.
 
 {
   "name": "Full Name",
@@ -109,11 +109,11 @@ Strict Instructions:
   "verdict": "shortlist" or "review" or "reject"
 }
 
-Be strict. Do not fill values that are missing or uncertain — use "N/A".
+Be strict. Do not fill values that are missing or uncertain - use "N/A".
 Avoid guessing. If fraud or gaps are suspected, flag them clearly.
 """
 
-# Email Templates - Enhanced for better communication
+# Email Templates
 EMAIL_TEMPLATES = {
     "shortlist": {
         "subject": "Congratulations! You've been shortlisted for {role}",
@@ -144,7 +144,7 @@ We will be in touch within the next few business days with any questions or requ
 
 Thank you for your patience during this process.
 
-Best regards,  
+Best regards,
 {company_name} Recruitment Team"""
     },
     
@@ -183,14 +183,14 @@ FRAUD_PATTERNS = {
     ]
 }
 
-# Quality Control Settings
+# Quality Control
 QUALITY_CONTROL = {
-    "min_resume_length": 100,        # Minimum characters in resume
-    "max_resume_length": 50000,      # Maximum characters in resume  
-    "min_score_variance": 10,        # Minimum variance in scoring
-    "max_processing_time": 45.0,     # Maximum time per resume (seconds)
-    "required_contact_fields": ["name", "email"],  # Required contact info
-    "suspicious_score_threshold": 95  # Flag perfect scores as suspicious
+    "min_resume_length": 100,
+    "max_resume_length": 50000,
+    "min_score_variance": 10,
+    "max_processing_time": 45.0,
+    "required_contact_fields": ["name", "email"],
+    "suspicious_score_threshold": 95
 }
 
 # Analytics Configuration
@@ -226,7 +226,7 @@ VALIDATION_SCHEMAS = {
     }
 }
 
-# System Messages and Prompts
+# System Messages
 SYSTEM_MESSAGES = {
     "processing_start": "🚀 Starting AI-powered resume analysis...",
     "processing_complete": "✅ Analysis completed successfully!",
@@ -235,7 +235,7 @@ SYSTEM_MESSAGES = {
     "performance_summary": "📊 Processed {count} resumes in {time:.2f}s (avg: {avg:.2f}s per resume)"
 }
 
-# Feature Flags - Enable/disable features
+# Feature Flags
 FEATURE_FLAGS = {
     "enable_fraud_detection": True,
     "enable_performance_monitoring": True,
@@ -247,15 +247,11 @@ FEATURE_FLAGS = {
     "enable_blob_storage": True
 }
 
-# Development/Debug Settings
+# Debug Settings
 DEBUG_CONFIG = {
     "log_level": "INFO",
-    "log_gpt_requests": False,      # Set to True for debugging GPT calls
-    "log_performance": True,        # Log performance metrics
-    "save_failed_responses": True,  # Save failed GPT responses for debugging
-    "mock_gpt_responses": False     # Use mock responses for testing
-
+    "log_gpt_requests": False,
+    "log_performance": True,
+    "save_failed_responses": True,
+    "mock_gpt_responses": False
 }
-
-
-
